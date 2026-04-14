@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dead Drop — Burn After Reading</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap');
+
+    :root {
+      --g:  #00ff41;
+      --g2: #00cc33;
+      --g3: #008822;
+      --g4: #003a10;
+      --g5: #001a08;
+      --r:  #ff2244;
+      --r2: #cc1133;
+      --a:  #ffcc00;
+      --bg: #030303;
+      --bg2:#080808;
+      --bg3:#0e0e0e;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
+
+    body {
+      background: var(--bg);
+      color: var(--g);
+      font-family: 'Share Tech Mono', 'Courier New', Courier, monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 16px 40px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* CRT scanlines */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0,0,0,0) 0px, rgba(0,0,0,0) 1px,
+        rgba(0,0,0,0.07) 1px, rgba(0,0,0,0.07) 2px
+      );
+      pointer-events: none;
+      z-index: 9998;
+    }
+
+    /* Static noise overlay (used during countdown) */
+    #noise {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 9997;
+      opacity: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+      background-size: 300px 300px;
+      mix-blend-mode: screen;
+      transition: opacity 0.4s;
+    }
+    #noise.on { opacity: 0.12; animation: ns 0.08s steps(1) infinite; }
+    @keyframes ns {
+      0%   { background-position:   0px   0px; }
+      25%  { background-position:  60px  30px; }
+      50%  { background-position: 120px  90px; }
+      75%  { background-position:  20px 150px; }
+      100% { background-position:   0px   0px; }
+    }
+
+    /* ─── SCREENS ─────────────────────────────────── */
+    .screen { display: none; width: 100%; max-width: 600px; animation: fadeIn 0.25s ease; }
+    .screen.active { display: block; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+
+    /* ─── HEADER ──────────────────────────────────── */
+    .header-area { text-align: center; margin-bottom: 36px; }
+
+    .logo {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(30px, 8vw, 56px);
+      font-weight: 900;
+      letter-spacing: 0.35em;
+      color: var(--g);
+      text-shadow:
+        0 0 8px  rgba(0,255,65,0.9),
+        0 0 28px rgba(0,255,65,0.5),
+        0 0 60px rgba(0,255,65,0.2);
+      user-select: none;
+      animation: logoFlicker 9s infinite;
+    }
+    @keyframes logoFlicker {
+      0%,93%,100%{ opacity:1; }
+      94%         { opacity:0.75; }
+      96%         { opacity:1; }
+      98%         { opacity:0.85; }
+    }
+
+    .tagline {
+      margin-top: 6px;
+      font-size: 10px;
+      letter-spacing: 0.45em;
+      color: var(--g4);
+      text-transform: uppercase;
+    }
+
+    /* ─── CARD ────────────────────────────────────── */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--g5);
+      border-top: 1px solid var(--g4);
+      padding: 28px 28px 28px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 10%; right: 10%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--g3), transparent);
+    }
+
+    .section-label {
+      font-size: 10px;
+      letter-spacing: 0.5em;
+      color: var(--g3);
+      margin-bottom: 14px;
+      text-transform: uppercase;
+    }
+
+    hr.div {
+      border: none;
+      border-top: 1px solid var(--g5);
+      margin: 22px 0;
+    }
+
+    /* ─── TEXTAREA ────────────────────────────────── */
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--g5);
+      color: var(--g);
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.75;
+      padding: 14px;
+      resize: vertical;
+      min-height: 150px;
+      outline: none;
+      caret-color: var(--g);
+      transition: border-color 0.2s;
+      border-radius: 0;
+    }
+    textarea::placeholder { color: var(--g4); }
+    textarea:focus { border-color: var(--g3); }
+    textarea.shake { border-color: var(--r) !important; animation: shake 0.3s ease; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25%      { transform: translateX(-4px); }
+      75%      { transform: translateX(4px); }
+    }
+
+    .char-counter {
+      font-size: 10px;
+      color: var(--g4);
+      text-align: right;
+      margin-top: 5px;
+      letter-spacing: 0.15em;
+    }
+    .char-counter.warn { color: var(--a); }
+    .char-counter.over { color: var(--r); }
+
+    /* ─── TIMER OPTIONS ───────────────────────────── */
+    .timer-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 22px; }
+    .timer-opt { display: none; }
+    .timer-label {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px;
+      padding: 12px 6px;
+      border: 1px solid var(--g5);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      color: var(--g3);
+    }
+    .t-icon { font-size: 20px; line-height: 1; }
+    .t-name { font-size: 10px; letter-spacing: 0.25em; }
+    .t-sub  { font-size: 9px;  color: var(--g4); }
+    .timer-opt:checked + .timer-label {
+      border-color: var(--g);
+      color: var(--g);
+      background: rgba(0,255,65,0.04);
+      box-shadow: inset 0 0 12px rgba(0,255,65,0.08);
+    }
+    .timer-label:hover { border-color: var(--g3); color: var(--g2); }
+
+    /* ─── BASE URL FIELD ──────────────────────────── */
+    .base-url-row {
+      display: flex; gap: 8px; margin-bottom: 22px; align-items: stretch;
+    }
+    .base-url-row input {
+      flex: 1; background: var(--bg); border: 1px solid var(--g5);
+      color: var(--g3); font-family: inherit; font-size: 11px;
+      padding: 8px 10px; outline: none; caret-color: var(--g);
+      transition: border-color 0.2s; border-radius: 0;
+    }
+    .base-url-row input:focus { border-color: var(--g3); color: var(--g); }
+    .base-url-row input::placeholder { color: var(--g4); }
+    .base-url-save {
+      background: transparent; border: 1px solid var(--g5);
+      color: var(--g3); font-family: inherit; font-size: 10px;
+      letter-spacing: 0.2em; padding: 0 12px; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .base-url-save:hover { color: var(--g); border-color: var(--g3); }
+
+    /* ─── PASSWORD FIELD ──────────────────────────── */
+    .pw-row {
+      display: flex; gap: 0; margin-bottom: 4px;
+    }
+    .pw-row input {
+      flex: 1; background: var(--bg); border: 1px solid var(--g5);
+      border-right: none;
+      color: var(--g); font-family: inherit; font-size: 13px;
+      padding: 10px 12px; outline: none; caret-color: var(--g);
+      transition: border-color 0.2s; border-radius: 0;
+      letter-spacing: 0.08em;
+    }
+    .pw-row input:focus { border-color: var(--g3); }
+    .pw-row input::placeholder { color: var(--g4); letter-spacing: 0.05em; font-size: 12px; }
+    .pw-row input.shake { border-color: var(--r) !important; animation: shake 0.3s ease; }
+    .pw-toggle {
+      background: var(--bg); border: 1px solid var(--g5);
+      color: var(--g4); font-family: inherit; font-size: 9px;
+      letter-spacing: 0.25em; padding: 0 10px; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap; border-radius: 0;
+    }
+    .pw-toggle:hover { color: var(--g3); border-color: var(--g4); }
+
+    /* ─── CONTEXT WARNING ─────────────────────────── */
+    .ctx-warn {
+      background: rgba(255,204,0,0.04);
+      border: 1px solid rgba(255,204,0,0.2);
+      padding: 12px 14px; margin-bottom: 18px;
+      font-size: 11px; line-height: 1.85; color: var(--a);
+    }
+    .ctx-warn strong { display: block; letter-spacing: 0.3em; margin-bottom: 5px; }
+
+    /* ─── BUTTONS ─────────────────────────────────── */
+    .btn {
+      display: block; width: 100%;
+      padding: 15px 20px;
+      font-family: 'Orbitron', monospace;
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      cursor: pointer; border: none; outline: none;
+      text-align: center; transition: all 0.15s;
+      border-radius: 0;
+    }
+    .btn + .btn { margin-top: 10px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-green {
+      background: var(--g);
+      color: #000;
+      box-shadow: 0 0 24px rgba(0,255,65,0.25);
+    }
+    .btn-green:hover:not(:disabled) {
+      background: #80ffaa;
+      box-shadow: 0 0 36px rgba(0,255,65,0.5);
+    }
+    .btn-green:active:not(:disabled) { transform: translateY(1px); }
+
+    .btn-red {
+      background: var(--r);
+      color: #fff;
+      animation: redPulse 2.2s infinite;
+    }
+    @keyframes redPulse {
+      0%,100%{ box-shadow: 0 0 18px rgba(255,34,68,0.3); }
+      50%    { box-shadow: 0 0 40px rgba(255,34,68,0.7); }
+    }
+    .btn-red:hover { background: #ff4466; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--g3);
+      border: 1px solid var(--g5);
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+    }
+    .btn-ghost:hover { color: var(--g); border-color: var(--g3); }
+
+    /* ─── LINK BOX ────────────────────────────────── */
+    .link-box {
+      background: var(--bg);
+      border: 1px solid var(--g5);
+      padding: 14px;
+      font-size: 11px; line-height: 1.8;
+      word-break: break-all;
+      color: var(--g2);
+      max-height: 110px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .link-box:hover { border-color: var(--g3); }
+
+    .copy-status {
+      font-size: 10px; letter-spacing: 0.3em;
+      color: var(--g4); text-align: center;
+      height: 18px; margin-bottom: 14px;
+      transition: color 0.2s;
+    }
+    .copy-status.ok { color: var(--g); }
+
+    .meta-row {
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--g4);
+      letter-spacing: 0.15em;
+      margin-bottom: 14px;
+    }
+
+    /* ─── WARNING SCREEN ──────────────────────────── */
+    .warn-icon {
+      font-size: 52px; text-align: center;
+      margin-bottom: 20px;
+      animation: warnBlink 1.1s infinite;
+    }
+    @keyframes warnBlink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+    .warn-title {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(15px, 4vw, 22px);
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: var(--r);
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
+    .warn-text {
+      color: var(--g3);
+      font-size: 13px; line-height: 1.85;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .warn-text .hi { color: var(--r); }
+
+    .expiry-notice {
+      font-size: 10px; color: var(--a);
+      text-align: center; letter-spacing: 0.3em;
+      margin-bottom: 22px; min-height: 16px;
+    }
+
+    .back-link {
+      display: block; margin-top: 16px;
+      font-size: 11px; color: var(--g4);
+      cursor: pointer; letter-spacing: 0.2em;
+      text-align: center;
+      transition: color 0.2s;
+      border: none; background: none; width: 100%;
+    }
+    .back-link:hover { color: var(--g3); }
+
+    /* ─── READING SCREEN ──────────────────────────── */
+    .msg-box {
+      background: var(--bg);
+      border: 1px solid var(--g4);
+      padding: 20px;
+      margin-bottom: 18px;
+      min-height: 100px;
+      position: relative;
+    }
+
+    #message-text {
+      font-size: 14px; line-height: 1.85;
+      white-space: pre-wrap; word-break: break-word;
+      transition: color 0.1s;
+    }
+    #message-text.glitching {
+      color: var(--r);
+      animation: tglitch 0.07s steps(1) infinite;
+    }
+    @keyframes tglitch {
+      0%  { transform: translate(0,0);    clip-path: inset(0 0 0 0); }
+      20% { transform: translate(-2px,1px); clip-path: inset(20% 0 55% 0); }
+      40% { transform: translate(2px,-1px); clip-path: inset(55% 0 20% 0); }
+      60% { transform: translate(-1px,2px); clip-path: inset(35% 0 35% 0); }
+      80% { transform: translate(1px,-2px); clip-path: inset(10% 0 75% 0); }
+     100% { transform: translate(0,0);    clip-path: inset(0 0 0 0); }
+    }
+
+    .countdown-track {
+      height: 2px; background: var(--g5);
+      margin-bottom: 10px; overflow: hidden;
+    }
+    .countdown-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--r2), var(--r), var(--a));
+      transform-origin: left;
+      transition: transform 1s linear;
+    }
+
+    .countdown-label {
+      font-size: 10px; letter-spacing: 0.35em;
+      color: var(--g3); text-align: center;
+      margin-bottom: 20px;
+    }
+    #cdnum { color: var(--r); }
+
+    /* ─── STATUS SCREENS ──────────────────────────── */
+    .status-screen { text-align: center; padding: 8px 0; }
+
+    .status-icon {
+      font-size: 48px;
+      margin-bottom: 18px;
+      display: block;
+    }
+
+    .status-title {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(16px, 4.5vw, 26px);
+      font-weight: 900;
+      letter-spacing: 0.22em;
+      margin-bottom: 16px;
+    }
+
+    .status-body {
+      font-size: 12px; line-height: 1.9;
+      color: var(--g3);
+      letter-spacing: 0.05em;
+    }
+    .status-body .dim { color: var(--g4); font-size: 11px; }
+
+    /* ─── FOOTER ──────────────────────────────────── */
+    .footer {
+      margin-top: 24px;
+      font-size: 10px; color: var(--g4);
+      letter-spacing: 0.3em; text-align: center;
+      line-height: 1.8;
+    }
+
+    /* ─── SCROLLBAR ───────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--g4); }
+
+    /* ─── RESPONSIVE ──────────────────────────────── */
+    @media (max-width: 480px) {
+      .card { padding: 20px 16px; }
+      .timer-grid { grid-template-columns: repeat(2,1fr); }
+      .t-sub { display: none; }
+    }
+
+    /* ─── DECRYPTING OVERLAY ──────────────────────── */
+    .decrypting-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+      font-size: 11px; letter-spacing: 0.5em; color: var(--g3);
+      z-index: 10;
+      animation: decryptPulse 0.8s infinite alternate;
+    }
+    @keyframes decryptPulse { from { color: var(--g4); } to { color: var(--g3); } }
+
+  </style>
+</head>
+<body>
+
+<div id="noise"></div>
+
+<!-- ── HEADER ─────────────────────────────────────────── -->
+<div class="header-area">
+  <div class="logo">Dead Drop</div>
+  <div class="tagline">Burn After Reading &nbsp;·&nbsp; Zero Trace &nbsp;·&nbsp; No Server</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: COMPOSE
+═══════════════════════════════════════════════════════ -->
+<div class="screen active" id="screen-compose">
+  <div class="card">
+    <div id="ctx-warn-box" style="display:none" class="ctx-warn">
+      <strong>⚠ LINK DELIVERY URL REQUIRED</strong>
+      DEADROP is running inside a preview frame (about:srcdoc) or locally as a file://.
+      Generated links need a real URL to work. Enter the URL where you've hosted this
+      HTML file below, or <a href="https://pages.github.com" target="_blank" style="color:var(--a)">host it free on GitHub Pages</a>.
+    </div>
+
+    <div class="section-label">// Delivery URL <span style="color:var(--g4);font-size:9px;letter-spacing:0.2em">(where this file is hosted)</span></div>
+    <div class="base-url-row">
+      <input type="text" id="base-url-input" placeholder="https://yoursite.com/deadrop.html" spellcheck="false">
+      <button class="base-url-save" onclick="saveBaseUrl()">SET ✓</button>
+    </div>
+
+    <div class="section-label">// Compose Transmission</div>
+    <textarea
+      id="compose-text"
+      placeholder="Type your message. It will be AES-256 encrypted and sealed inside the link — nothing is stored anywhere."
+      maxlength="2000"
+      oninput="updateCharCount(this)"></textarea>
+    <div class="char-counter" id="char-counter">0 / 2000</div>
+
+    <hr class="div">
+
+    <div class="section-label">// Password Lock <span style="color:var(--g4);font-size:9px;letter-spacing:0.2em">(optional — leave blank for none)</span></div>
+    <div class="pw-row">
+      <input type="password" id="compose-pw" placeholder="Recipient must enter this to open" autocomplete="off" spellcheck="false">
+      <button class="pw-toggle" type="button" onclick="togglePw('compose-pw',this)" tabindex="-1">SHOW</button>
+    </div>
+
+    <hr class="div">
+
+    <div class="section-label">// Self-Destruct Protocol</div>
+    <div class="timer-grid">
+      <input type="radio" name="timer" id="t0" value="0"      class="timer-opt" checked>
+      <label for="t0" class="timer-label">
+        <span class="t-icon">◎</span>
+        <span class="t-name">Once Read</span>
+        <span class="t-sub">instant burn</span>
+      </label>
+
+      <input type="radio" name="timer" id="t1" value="3600"   class="timer-opt">
+      <label for="t1" class="timer-label">
+        <span class="t-icon">⊙</span>
+        <span class="t-name">1 Hour</span>
+        <span class="t-sub">+ burn on read</span>
+      </label>
+
+      <input type="radio" name="timer" id="t2" value="86400"  class="timer-opt">
+      <label for="t2" class="timer-label">
+        <span class="t-icon">◑</span>
+        <span class="t-name">24 Hours</span>
+        <span class="t-sub">+ burn on read</span>
+      </label>
+
+      <input type="radio" name="timer" id="t3" value="604800" class="timer-opt">
+      <label for="t3" class="timer-label">
+        <span class="t-icon">●</span>
+        <span class="t-name">7 Days</span>
+        <span class="t-sub">+ burn on read</span>
+      </label>
+    </div>
+
+    <button class="btn btn-green" id="seal-btn" onclick="sealMessage()">
+      ▣ &nbsp;SEAL &amp; CREATE LINK
+    </button>
+  </div>
+
+  <div class="footer">
+    AES-256-GCM · Key lives in URL fragment only · Never sent to any server
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: LINK READY
+═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-link">
+  <div class="card">
+    <div class="section-label">// Transmission Sealed &amp; Encrypted</div>
+    <div class="meta-row" id="link-meta"></div>
+
+    <div class="link-box" id="link-display" onclick="copyLink()" title="Click to copy"></div>
+    <div class="copy-status" id="copy-status">↑ click the link to copy</div>
+
+    <button class="btn btn-green" onclick="copyLink()" style="margin-bottom:10px">
+      ⧉ &nbsp;COPY LINK
+    </button>
+    <button class="btn btn-ghost" onclick="newMessage()">
+      + &nbsp;Create Another Message
+    </button>
+  </div>
+
+  <div class="footer">⚠ &nbsp;This link self-destructs after ONE read &nbsp;·&nbsp; Share securely</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: WARNING (incoming link)
+═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-warning">
+  <div class="card">
+    <div class="warn-icon">⚠</div>
+    <div class="warn-title">INCOMING TRANSMISSION</div>
+    <div class="warn-text">
+      Someone has sent you an encrypted message.<br>
+      <span class="hi">This action cannot be undone.</span><br><br>
+      Once you press OPEN, the message will be permanently<br>
+      destroyed and cannot be read a second time.
+    </div>
+    <div class="expiry-notice" id="expiry-notice"></div>
+
+    <!-- Password section — shown only for d2 links -->
+    <div id="pw-section" style="display:none; margin-bottom:20px;">
+      <div class="section-label" style="text-align:center">// Password Required</div>
+      <div class="pw-row">
+        <input type="password" id="warn-pw-input" placeholder="Enter password to unlock"
+               autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter') openAndDestroy()">
+        <button class="pw-toggle" type="button" onclick="togglePw('warn-pw-input',this)" tabindex="-1">SHOW</button>
+      </div>
+      <div id="warn-pw-error" style="display:none; color:var(--r); font-size:11px; letter-spacing:0.2em; text-align:center; margin-top:8px;">
+        ✕ &nbsp;WRONG PASSWORD — try again
+      </div>
+    </div>
+
+    <button class="btn btn-red" id="open-destroy-btn" onclick="openAndDestroy()">
+      ▶ &nbsp;OPEN &amp; DESTROY
+    </button>
+    <button class="back-link" onclick="goBack()">← Abort — Go Back</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: READING
+═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-reading">
+  <div class="card">
+    <div class="section-label">// Decrypted Transmission — Reading now</div>
+    <div class="msg-box" id="msg-box">
+      <div id="message-text"></div>
+    </div>
+    <div class="countdown-track">
+      <div class="countdown-bar" id="cdbar"></div>
+    </div>
+    <div class="countdown-label">
+      SELF-DESTRUCT IN &nbsp;<span id="cdnum">10</span>&nbsp; SECONDS
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: TERMINATED (after countdown)
+═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-terminated">
+  <div class="card">
+    <div class="status-screen">
+      <span class="status-icon" style="color:var(--r)">▓▒░▒▓</span>
+      <div class="status-title" style="color:var(--r)">TRANSMISSION TERMINATED</div>
+      <div class="status-body">
+        Message destroyed. No trace remains.<br><br>
+        <span class="dim">This window can be safely closed.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: DESTROYED (already opened)
+═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-destroyed">
+  <div class="card">
+    <div class="status-screen">
+      <span class="status-icon" style="color:var(--r)">✕</span>
+      <div class="status-title" style="color:var(--r)">ALREADY DESTROYED</div>
+      <div class="status-body">
+        This transmission has already been opened.<br>
+        The message no longer exists.<br><br>
+        <span class="dim">
+          Burn state is tracked in this browser.<br>
+          If opened from a different device, the data<br>
+          may be unreadable regardless — keys don't regenerate.
+        </span>
+      </div>
+      <hr class="div">
+      <button class="btn btn-ghost" onclick="newMessage()">Create New Message</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: EXPIRED
+═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-expired">
+  <div class="card">
+    <div class="status-screen">
+      <span class="status-icon" style="color:var(--g3)">⊘</span>
+      <div class="status-title" style="color:var(--g3)">LINK EXPIRED</div>
+      <div class="status-body">
+        This transmission has passed its expiry window.<br>
+        The sender set a time limit that has elapsed.<br><br>
+        <span class="dim">No message exists at this address.</span>
+      </div>
+      <hr class="div">
+      <button class="btn btn-ghost" onclick="newMessage()">Create New Message</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: ERROR
+═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-error">
+  <div class="card">
+    <div class="status-screen">
+      <span class="status-icon" style="color:var(--a)">⚡</span>
+      <div class="status-title" style="color:var(--a)">DECRYPTION FAILED</div>
+      <div class="status-body" id="error-body">
+        The link appears to be corrupted or tampered with.
+      </div>
+      <hr class="div">
+      <button class="btn btn-ghost" onclick="newMessage()">← Go Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     JAVASCRIPT — All logic runs client-side
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ──────────────────────────────────────────────────────
+   CRYPTO CORE
+────────────────────────────────────────────────────── */
+const DR = {
+  PFX: 'dr_',
+
+  /* Base64url — no +/= chars, safe in URL fragments */
+  enc64(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)))
+      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  },
+  dec64(s) {
+    s = s.replace(/-/g,'+').replace(/_/g,'/');
+    while (s.length % 4) s += '=';
+    return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  },
+
+  rand(n) { return crypto.getRandomValues(new Uint8Array(n)); },
+
+  /* ── AES-256-GCM encrypt plaintext ── */
+  async encrypt(plaintext) {
+    const msgId  = this.enc64(this.rand(10));
+    const rawKey = await crypto.subtle.generateKey(
+      { name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']
+    );
+    const iv  = this.rand(12);
+    const buf = await crypto.subtle.encrypt(
+      { name:'AES-GCM', iv }, rawKey, new TextEncoder().encode(plaintext)
+    );
+    const keyBuf = await crypto.subtle.exportKey('raw', rawKey);
+    return { msgId, iv: this.enc64(iv), cipher: this.enc64(buf),
+             key: this.enc64(keyBuf), rawKeyBuf: keyBuf };
+  },
+
+  /* ── AES-256-GCM decrypt using b64url key ── */
+  async decrypt(ivB64, cipherB64, keyB64) {
+    const key = await crypto.subtle.importKey(
+      'raw', this.dec64(keyB64), { name:'AES-GCM' }, false, ['decrypt']
+    );
+    const plain = await crypto.subtle.decrypt(
+      { name:'AES-GCM', iv: this.dec64(ivB64) }, key, this.dec64(cipherB64)
+    );
+    return new TextDecoder().decode(plain);
+  },
+
+  /* ── Derive AES-256 key from password via PBKDF2 ── */
+  async deriveKey(password, salt) {
+    const raw = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name:'PBKDF2', salt, iterations:150000, hash:'SHA-256' },
+      raw, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+    );
+  },
+
+  /* ── Wrap (encrypt) the AES key with a password-derived key ── */
+  async wrapKey(rawKeyBuf, password) {
+    const salt   = this.rand(16);
+    const wrapIv = this.rand(12);
+    const pwKey  = await this.deriveKey(password, salt);
+    const wrapped = await crypto.subtle.encrypt(
+      { name:'AES-GCM', iv: wrapIv }, pwKey, rawKeyBuf
+    );
+    return { wrappedKey: this.enc64(wrapped), salt: this.enc64(salt), wrapIv: this.enc64(wrapIv) };
+  },
+
+  /* ── Unwrap (decrypt) the AES key using the password ── */
+  async unwrapKey(wrappedKeyB64, password, saltB64, wrapIvB64) {
+    const pwKey     = await this.deriveKey(password, this.dec64(saltB64));
+    const rawKeyBuf = await crypto.subtle.decrypt(
+      { name:'AES-GCM', iv: this.dec64(wrapIvB64) }, pwKey, this.dec64(wrappedKeyB64)
+    );
+    return this.enc64(rawKeyBuf);
+  },
+
+  /*
+    Fragment formats:
+      d1 (no password):  d1.<msgId>.<iv>.<cipher>.<key>.<expiry>          — 6 parts
+      d2 (password):     d2.<msgId>.<iv>.<cipher>.<wrappedKey>.<expiry>.<salt>.<wrapIv> — 8 parts
+  */
+  buildFrag({ msgId, iv, cipher, key, expiryTs, wrappedKey, salt, wrapIv }) {
+    if (wrappedKey) {
+      return `d2.${msgId}.${iv}.${cipher}.${wrappedKey}.${expiryTs}.${salt}.${wrapIv}`;
+    }
+    return `d1.${msgId}.${iv}.${cipher}.${key}.${expiryTs}`;
+  },
+
+  parseFrag(hash) {
+    const p = hash.replace(/^#/,'').split('.');
+    if (p[0] === 'd1' && p.length === 6) {
+      const exp = parseInt(p[5]);
+      if (isNaN(exp)) return null;
+      return { version:'d1', msgId:p[1], iv:p[2], cipher:p[3], key:p[4],
+               expiryTs:exp, hasPassword:false };
+    }
+    if (p[0] === 'd2' && p.length === 8) {
+      const exp = parseInt(p[5]);
+      if (isNaN(exp)) return null;
+      return { version:'d2', msgId:p[1], iv:p[2], cipher:p[3], wrappedKey:p[4],
+               expiryTs:exp, salt:p[6], wrapIv:p[7], hasPassword:true };
+    }
+    return null;
+  },
+
+  isBurned(id) { try { return !!localStorage.getItem(this.PFX+id); } catch { return false; } },
+  burn(id)     { try { localStorage.setItem(this.PFX+id,'1'); }      catch {} }
+};
+
+/* ──────────────────────────────────────────────────────
+   UI HELPERS
+────────────────────────────────────────────────────── */
+let _current = null; // parsed fragment for current incoming link
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.toggle('active', s.id === 'screen-' + id);
+  });
+}
+
+function updateCharCount(ta) {
+  const n = ta.value.length;
+  const el = document.getElementById('char-counter');
+  el.textContent = `${n} / 2000`;
+  el.className = 'char-counter' + (n > 1800 ? ' warn' : '') + (n === 2000 ? ' over' : '');
+}
+
+function fmtTime(s) {
+  if (s < 3600)  return `${Math.floor(s/60)} minutes`;
+  if (s < 86400) return `${Math.floor(s/3600)} hours`;
+  return `${Math.floor(s/86400)} days`;
+}
+
+/* ──────────────────────────────────────────────────────
+   COMPOSE → SEAL
+────────────────────────────────────────────────────── */
+async function sealMessage() {
+  const ta   = document.getElementById('compose-text');
+  const text = ta.value.trim();
+
+  if (!text) {
+    ta.classList.add('shake');
+    setTimeout(() => ta.classList.remove('shake'), 400);
+    return;
+  }
+
+  const btn = document.getElementById('seal-btn');
+  btn.textContent = '⏳  ENCRYPTING…';
+  btn.disabled = true;
+
+  try {
+    const expirySeconds = parseInt(
+      document.querySelector('input[name="timer"]:checked').value
+    );
+    const expiryTs = expirySeconds === 0
+      ? 9999999999
+      : Math.floor(Date.now()/1000) + expirySeconds;
+
+    const { msgId, iv, cipher, key, rawKeyBuf } = await DR.encrypt(text);
+    const password = document.getElementById('compose-pw').value.trim();
+
+    let frag;
+    if (password) {
+      btn.textContent = '⏳  DERIVING KEY…';
+      const { wrappedKey, salt, wrapIv } = await DR.wrapKey(rawKeyBuf, password);
+      frag = DR.buildFrag({ msgId, iv, cipher, wrappedKey, expiryTs, salt, wrapIv });
+    } else {
+      frag = DR.buildFrag({ msgId, iv, cipher, key, expiryTs });
+    }
+
+    /* Use saved base URL, or fall back to current page URL */
+    const savedBase = localStorage.getItem('dr_baseurl') || '';
+    const pageBase  = window.location.href.split('#')[0];
+    const base      = (savedBase && savedBase.startsWith('http')) ? savedBase : pageBase;
+    const url       = base + '#' + frag;
+
+    document.getElementById('link-display').textContent = url;
+    document.getElementById('copy-status').textContent  = '↑ click the link to copy';
+    document.getElementById('copy-status').className    = 'copy-status';
+
+    const labels = { 0:'Burns on read', 3600:'Expires in 1 hour', 86400:'Expires in 24 hours', 604800:'Expires in 7 days' };
+    const pwBadge = password ? '&nbsp;&nbsp;<span style="color:var(--a)">🔑 Password protected</span>' : '';
+    document.getElementById('link-meta').innerHTML =
+      `<span style="color:var(--g4)">ID: ${msgId.slice(0,8)}…</span>` +
+      `<span style="color:var(--g3)">${labels[expirySeconds] ?? 'Expires in 7 days'}${pwBadge}</span>`;
+
+    showScreen('link');
+  } catch(e) {
+    alert('Encryption error: ' + e.message);
+  } finally {
+    btn.textContent = '▣  SEAL & CREATE LINK';
+    btn.disabled = false;
+  }
+}
+
+/* ──────────────────────────────────────────────────────
+   COPY LINK
+────────────────────────────────────────────────────── */
+async function copyLink() {
+  const url = document.getElementById('link-display').textContent.trim();
+  const st  = document.getElementById('copy-status');
+
+  function markCopied() {
+    st.textContent = '✓  COPIED TO CLIPBOARD';
+    st.className   = 'copy-status ok';
+    setTimeout(() => { st.textContent = '↑ click the link to copy'; st.className = 'copy-status'; }, 3000);
+  }
+
+  /* 1. Modern clipboard API */
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(url);
+      markCopied(); return;
+    } catch {}
+  }
+
+  /* 2. execCommand fallback (works on file:// in all browsers) */
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) { markCopied(); return; }
+  } catch {}
+
+  /* 3. Last resort: select the visible text so user can Ctrl+C */
+  const box = document.getElementById('link-display');
+  const sel = window.getSelection();
+  const r   = document.createRange();
+  r.selectNodeContents(box);
+  sel.removeAllRanges();
+  sel.addRange(r);
+  st.textContent = '↑ text selected — press Ctrl+C (or ⌘C)';
+}
+
+/* ──────────────────────────────────────────────────────
+   INCOMING LINK PROCESSING
+────────────────────────────────────────────────────── */
+function processIncoming() {
+  const hash = window.location.hash;
+  if (!hash || hash.length < 5) { showScreen('compose'); return; }
+
+  const parsed = DR.parseFrag(hash);
+  if (!parsed) { showScreen('compose'); return; }
+
+  _current = parsed;
+
+  if (DR.isBurned(parsed.msgId)) { showScreen('destroyed'); return; }
+
+  const now = Math.floor(Date.now()/1000);
+  if (parsed.expiryTs !== 9999999999 && now > parsed.expiryTs) {
+    showScreen('expired'); return;
+  }
+
+  const expiryNote = parsed.expiryTs === 9999999999
+    ? 'No time limit — burns when opened'
+    : `Link expires in ${fmtTime(parsed.expiryTs - now)}`;
+  document.getElementById('expiry-notice').textContent = expiryNote;
+  document.getElementById('pw-section').style.display = parsed.hasPassword ? 'block' : 'none';
+  if (parsed.hasPassword) {
+    document.getElementById('warn-pw-input').value = '';
+    document.getElementById('warn-pw-error').style.display = 'none';
+    document.getElementById('open-destroy-btn').textContent = '▶  UNLOCK & DESTROY';
+  } else {
+    document.getElementById('open-destroy-btn').textContent = '▶  OPEN & DESTROY';
+  }
+
+  showScreen('warning');
+}
+
+/* ──────────────────────────────────────────────────────
+   OPEN & DESTROY
+────────────────────────────────────────────────────── */
+async function openAndDestroy() {
+  if (!_current) { showScreen('compose'); return; }
+
+  let resolvedKey = _current.key; // d1: key is already in fragment
+
+  /* ── d2: validate password BEFORE burning ── */
+  if (_current.hasPassword) {
+    const pw = document.getElementById('warn-pw-input').value;
+    if (!pw) {
+      const inp = document.getElementById('warn-pw-input');
+      inp.classList.add('shake');
+      setTimeout(() => inp.classList.remove('shake'), 400);
+      return;
+    }
+
+    const btn = document.getElementById('open-destroy-btn');
+    btn.textContent = '⏳  VERIFYING…';
+    btn.disabled = true;
+
+    try {
+      resolvedKey = await DR.unwrapKey(
+        _current.wrappedKey, pw, _current.salt, _current.wrapIv
+      );
+    } catch {
+      /* Wrong password — do NOT burn */
+      btn.textContent = '▶  OPEN & DESTROY';
+      btn.disabled = false;
+      const errEl = document.getElementById('warn-pw-error');
+      errEl.style.display = 'block';
+      const inp = document.getElementById('warn-pw-input');
+      inp.classList.add('shake');
+      inp.value = '';
+      inp.focus();
+      setTimeout(() => { inp.classList.remove('shake'); errEl.style.display='none'; }, 2500);
+      return;
+    }
+  }
+
+  /* ── Burn now (password verified or not required) ── */
+  DR.burn(_current.msgId);
+
+  /* Show decrypting overlay */
+  const msgBox  = document.getElementById('msg-box');
+  const overlay = document.createElement('div');
+  overlay.className  = 'decrypting-overlay';
+  overlay.textContent = '// DECRYPTING…';
+  msgBox.appendChild(overlay);
+  showScreen('reading');
+  document.getElementById('message-text').textContent = '';
+
+  try {
+    const plaintext = await DR.decrypt(_current.iv, _current.cipher, resolvedKey);
+    overlay.remove();
+    document.getElementById('message-text').textContent = plaintext;
+    startCountdown(plaintext);
+  } catch(e) {
+    overlay.remove();
+    document.getElementById('error-body').innerHTML =
+      `Decryption failed.<br><br><span class="dim">${e.message}</span>`;
+    showScreen('error');
+  }
+}
+
+/* ──────────────────────────────────────────────────────
+   COUNTDOWN + GLITCH DESTRUCTION
+────────────────────────────────────────────────────── */
+function startCountdown(originalText) {
+  const TOTAL   = 10;
+  let remaining = TOTAL;
+
+  const numEl   = document.getElementById('cdnum');
+  const barEl   = document.getElementById('cdbar');
+  const msgEl   = document.getElementById('message-text');
+  const noiseEl = document.getElementById('noise');
+  const GLYPHS  = '▓▒░█▄▌▐▀■□▪▫◆◇▲△';
+
+  barEl.style.transform = 'scaleX(1)';
+  numEl.textContent = remaining;
+
+  const tick = setInterval(() => {
+    remaining--;
+    numEl.textContent = remaining;
+    barEl.style.transform = `scaleX(${Math.max(0, remaining / TOTAL)})`;
+
+    /* 3 seconds left: noise appears */
+    if (remaining <= 3) noiseEl.classList.add('on');
+
+    /* 2 seconds left: partial glitch */
+    if (remaining <= 2 && remaining > 0) {
+      const decay = (3 - remaining) / 3;
+      const chars = [...originalText].map(c => {
+        if (c === ' ' || c === '\n') return c;
+        return Math.random() < decay
+          ? GLYPHS[Math.floor(Math.random() * GLYPHS.length)]
+          : c;
+      });
+      msgEl.textContent = chars.join('');
+      msgEl.classList.add('glitching');
+    }
+
+    if (remaining <= 0) {
+      clearInterval(tick);
+
+      /* Full static */
+      msgEl.textContent = [...originalText].map(c =>
+        (c === ' ' || c === '\n') ? c : GLYPHS[Math.floor(Math.random() * GLYPHS.length)]
+      ).join('');
+
+      /* Brief static hold, then terminated */
+      setTimeout(() => {
+        noiseEl.classList.remove('on');
+        msgEl.classList.remove('glitching');
+        /* Wipe hash cleanly */
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        showScreen('terminated');
+      }, 700);
+    }
+  }, 1000);
+}
+
+/* ──────────────────────────────────────────────────────
+   NAVIGATION HELPERS
+────────────────────────────────────────────────────── */
+function saveBaseUrl() {
+  const val = document.getElementById('base-url-input').value.trim();
+  if (val) {
+    try { localStorage.setItem('dr_baseurl', val); } catch {}
+    const btn = document.querySelector('.base-url-save');
+    btn.textContent = 'SAVED ✓';
+    setTimeout(() => btn.textContent = 'SET ✓', 2000);
+  }
+}
+
+function initBaseUrl() {
+  const loc = window.location.href;
+  const isBadContext = loc.startsWith('about:') || loc.startsWith('blob:') || loc.startsWith('data:');
+  const isFile       = loc.startsWith('file://');
+  const saved        = (() => { try { return localStorage.getItem('dr_baseurl') || ''; } catch { return ''; } })();
+
+  const input = document.getElementById('base-url-input');
+  const warn  = document.getElementById('ctx-warn-box');
+
+  if (saved && saved.startsWith('http')) {
+    input.value = saved;
+  } else if (!isBadContext && !isFile) {
+    /* Running at a real https URL — pre-fill and hide the warning */
+    input.value = loc.split('#')[0];
+    warn.style.display = 'none';
+    return;
+  }
+
+  if (isBadContext || isFile) warn.style.display = 'block';
+}
+
+
+function togglePw(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? 'HIDE' : 'SHOW';
+}
+
+function newMessage() {
+  _current = null;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  document.getElementById('compose-text').value = '';
+  document.getElementById('compose-pw').value = '';
+  updateCharCount(document.getElementById('compose-text'));
+  showScreen('compose');
+}
+
+function goBack() {
+  _current = null;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  showScreen('compose');
+}
+
+/* ──────────────────────────────────────────────────────
+   INIT
+────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  initBaseUrl();
+  if (window.location.hash && window.location.hash.length > 4) {
+    processIncoming();
+  } else {
+    showScreen('compose');
+  }
+});
+
+window.addEventListener('hashchange', () => {
+  _current = null;
+  if (window.location.hash && window.location.hash.length > 4) {
+    processIncoming();
+  } else {
+    showScreen('compose');
+  }
+});
+</script>
+</body>
+</html>
